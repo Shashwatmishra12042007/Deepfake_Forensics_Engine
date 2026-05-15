@@ -1006,12 +1006,18 @@ def render_spectrum_evidence_tab(results: dict[str, Any]) -> None:
         c2.metric("Spectral residual", forensic.get("spectral_residual_score", "—"))
         c3.metric("Heuristic synthetic", forensic.get("heuristic_synthetic_score", "—"))
         if results.get("gradcam_meta"):
-            st.image(
-                _bgr_to_rgb(results["gradcam_meta"]["overlay_bgr"]),
-                use_container_width=True,
-            )
-    else:
-        st.caption("No spectrum data for this asset type.")
+            # Safely attempt to render the audio spectrogram
+            spectrogram_data = results.get("spectrogram") # Change "spectrogram" to your exact key if it is different
+    
+            if spectrogram_data is not None:
+                try:
+                    st.image(spectrogram_data, caption="Audio Frequency Analysis", use_container_width=True)
+                except Exception as e:
+                    st.warning("Could not render the acoustic spectrogram.")
+            else:
+                st.info("No acoustic data detected (this media file likely does not contain an audio track).")
+            else:
+                st.caption("No spectrum data for this asset type.")
 
 
 def render_right_forensic_panel(
