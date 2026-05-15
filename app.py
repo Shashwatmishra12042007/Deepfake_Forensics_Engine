@@ -834,23 +834,38 @@ def display_gradcam_panel(cam: dict, *, frame_label: str | None = None) -> None:
     )
     col_orig, col_cam = st.columns(2)
     with col_orig:
-     original = cam.get("original_bgr") if isinstance(cam, dict) else getattr(cam, "original_bgr", None)
-    
-     if original is not None:
-         try:
-             st.image(_bgr_to_rgb(original), caption="Source frame", use_container_width=True)
-         except Exception as e:
-             st.warning("Could not render the source frame for Grad-CAM.")
-     else:
-         st.info("No source frame available for heatmap overlay.")
+        original = cam.get("original_bgr") if isinstance(cam, dict) else getattr(cam, "original_bgr", None)
+        if original is not None:
+            try:
+                import numpy as np
+                safe_orig = original
+                if hasattr(safe_orig, 'detach'):
+                    safe_orig = safe_orig.detach().cpu().numpy()
+                if isinstance(safe_orig, np.ndarray):
+                    safe_orig = np.squeeze(safe_orig)
+                    if safe_orig.dtype in [np.float32, np.float64]:
+                        safe_orig = (np.clip(safe_orig, 0, 1) * 255).astype(np.uint8)
+                st.image(safe_orig, channels="BGR", caption="Source frame", use_container_width=True)
+            except Exception as e:
+                st.warning("Could not render the source frame for Grad-CAM.")
+        else:
+            st.info("No source frame available for heatmap overlay.")
+            
     with col_cam:
-    # Safely draw the heatmap if it exists
-     heatmap_overlay = cam.get("overlay") if isinstance(cam, dict) else getattr(cam, "overlay", None)
-     if heatmap_overlay is not None:
-         try:
-             st.image(_bgr_to_rgb(heatmap_overlay), caption="Grad-CAM Overlay", use_container_width=True)
-         except Exception:
-             pass
+        heatmap_overlay = cam.get("overlay") if isinstance(cam, dict) else getattr(cam, "overlay", None)
+        if heatmap_overlay is not None:
+            try:
+                import numpy as np
+                safe_heat = heatmap_overlay
+                if hasattr(safe_heat, 'detach'):
+                    safe_heat = safe_heat.detach().cpu().numpy()
+                if isinstance(safe_heat, np.ndarray):
+                    safe_heat = np.squeeze(safe_heat)
+                    if safe_heat.dtype in [np.float32, np.float64]:
+                        safe_heat = (np.clip(safe_heat, 0, 1) * 255).astype(np.uint8)
+                st.image(safe_heat, channels="BGR", caption="Grad-CAM Overlay", use_container_width=True)
+            except Exception:
+                pass
 
 
 def _render_verdict_banner(authenticity_pct: float, warn_pct: float) -> None:
@@ -944,19 +959,26 @@ def render_media_analysis_tab(results: dict[str, Any]) -> None:
 
     if media_type == "image":
         if results.get("image_bytes") is not None:
-            # Safely attempt to render the media
-             media_data = results.get("image_bytes")
-        
-             if media_data is not None:
-                 try:
-                # If it's a valid image or NumPy array
-                     st.image(media_data, caption="Analyzed Media", use_container_width=True)
-                 except Exception as e:
-                     st.error("Media format could not be visually rendered.")
+            media_data = results.get("image_bytes")
+            if media_data is not None:
+                try:
+                    import numpy as np
+                    safe_media = media_data
+                    if hasattr(safe_media, 'detach'):
+                        safe_media = safe_media.detach().cpu().numpy()
+                    if isinstance(safe_media, np.ndarray):
+                        safe_media = np.squeeze(safe_media)
+                        if safe_media.dtype in [np.float32, np.float64]:
+                            safe_media = (np.clip(safe_media, 0, 1) * 255).astype(np.uint8)
+                    st.image(safe_media, caption="Analyzed Media", use_container_width=True)
+                except Exception as e:
+                    st.error("Media format could not be visually rendered.")
         else:
-             st.info("Visual preview is not available for this file type (e.g., Audio/Metadata only).")
+            st.info("Visual preview is not available for this file type.")
+            
         if results.get("gradcam_meta"):
             display_gradcam_panel(results["gradcam_meta"])
+            
     elif media_type == "video":
         frame_scores = results.get("frame_scores") or []
         if frame_scores:
@@ -991,6 +1013,7 @@ def render_spectrum_evidence_tab(results: dict[str, Any]) -> None:
             + ("video soundtrack" if media_type == "video" else "audio waveform")
         )
         render_mel_spectrogram(audio_y, audio_sr)
+
         if media_type == "audio":
             features = (results.get("analysis_details") or {}).get("librosa_features", {})
             if features:
@@ -998,6 +1021,7 @@ def render_spectrum_evidence_tab(results: dict[str, Any]) -> None:
                 c1.metric("MFCC variance", features.get("mfcc_variance", "—"))
                 c2.metric("Spectral flatness", features.get("spectral_flatness_mean", "—"))
                 c3.metric("Heuristic synthetic", features.get("heuristic_synthetic_score", "—"))
+                
     elif media_type in {"image", "video"}:
         st.markdown("##### Spatial frequency evidence")
         forensic = get_last_forensic_details() or {}
@@ -1005,17 +1029,7 @@ def render_spectrum_evidence_tab(results: dict[str, Any]) -> None:
         c1.metric("Moiré score", forensic.get("moire_score", "—"))
         c2.metric("Spectral residual", forensic.get("spectral_residual_score", "—"))
         c3.metric("Heuristic synthetic", forensic.get("heuristic_synthetic_score", "—"))
-        if results.get("gradcam_meta"):
-            # Safely attempt to render the audio spectrogram
-            spectrogram_data = results.get("spectrogram") # Change "spectrogram" to your exact key if it is different
-    
-            if spectrogram_data is not None:
-                try:
-                    st.image(spectrogram_data, caption="Audio Frequency Analysis", use_container_width=True)
-                except Exception as e:
-                    st.warning("Could not render the acoustic spectrogram.")
-            else:
-                st.info("No acoustic data detected (this media file likely does not contain an audio track).")             
+        st.info("No acoustic data detected for this visual asset.")
     else:
         st.caption("No spectrum data for this asset type.")
 
