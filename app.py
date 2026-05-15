@@ -834,7 +834,15 @@ def display_gradcam_panel(cam: dict, *, frame_label: str | None = None) -> None:
     )
     col_orig, col_cam = st.columns(2)
     with col_orig:
-        st.image(_bgr_to_rgb(cam["original_bgr"]), caption="Source frame", use_container_width=True)
+    original = cam.get("original_bgr") if isinstance(cam, dict) else getattr(cam, "original_bgr", None)
+    
+    if original is not None:
+        try:
+            st.image(_bgr_to_rgb(original), caption="Source frame", use_container_width=True)
+        except Exception as e:
+            st.warning("Could not render the source frame for Grad-CAM.")
+    else:
+        st.info("No source frame available for heatmap overlay.")
     with col_cam:
         st.image(
             _bgr_to_rgb(cam["overlay_bgr"]),
