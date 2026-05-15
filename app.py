@@ -844,11 +844,13 @@ def display_gradcam_panel(cam: dict, *, frame_label: str | None = None) -> None:
     else:
         st.info("No source frame available for heatmap overlay.")
     with col_cam:
-        st.image(
-            _bgr_to_rgb(cam["overlay_bgr"]),
-            caption=f"Heatmap → {cam['target_label']}",
-            use_container_width=True,
-        )
+    # Safely draw the heatmap if it exists
+    heatmap_overlay = cam.get("overlay") if isinstance(cam, dict) else getattr(cam, "overlay", None)
+    if heatmap_overlay is not None:
+        try:
+            st.image(_bgr_to_rgb(heatmap_overlay), caption="Grad-CAM Overlay", use_container_width=True)
+        except Exception:
+            pass
 
 
 def _render_verdict_banner(authenticity_pct: float, warn_pct: float) -> None:
