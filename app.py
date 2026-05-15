@@ -1015,9 +1015,9 @@ def render_spectrum_evidence_tab(results: dict[str, Any]) -> None:
                 except Exception as e:
                     st.warning("Could not render the acoustic spectrogram.")
             else:
-                st.info("No acoustic data detected (this media file likely does not contain an audio track).")
-            else:
-                st.caption("No spectrum data for this asset type.")
+                st.info("No acoustic data detected (this media file likely does not contain an audio track).")             
+    else:
+        st.caption("No spectrum data for this asset type.")
 
 
 def render_right_forensic_panel(
