@@ -934,7 +934,17 @@ def render_media_analysis_tab(results: dict[str, Any]) -> None:
 
     if media_type == "image":
         if results.get("image_bytes") is not None:
-            st.image(results["image_bytes"], caption="Uploaded asset", use_container_width=True)
+            # Safely attempt to render the media
+        media_data = results.get("image_bytes")
+        
+        if media_data is not None:
+            try:
+                # If it's a valid image or NumPy array
+                st.image(media_data, caption="Analyzed Media", use_container_width=True)
+            except Exception as e:
+                st.error("Media format could not be visually rendered.")
+        else:
+            st.info("Visual preview is not available for this file type (e.g., Audio/Metadata only).")
         if results.get("gradcam_meta"):
             display_gradcam_panel(results["gradcam_meta"])
     elif media_type == "video":
