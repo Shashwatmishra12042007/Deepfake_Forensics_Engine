@@ -847,7 +847,7 @@ def display_gradcam_panel(cam: dict, *, frame_label: str | None = None) -> None:
                         safe_orig = (np.clip(safe_orig, 0, 1) * 255).astype(np.uint8)
                 st.image(safe_orig, channels="BGR", caption="Source frame", use_container_width=True)
             except Exception as e:
-                st.warning("Could not render the source frame for Grad-CAM.")
+                st.warning(f"Grad-CAM source error: {e}")
         else:
             st.info("No source frame available for heatmap overlay.")
             
@@ -864,8 +864,8 @@ def display_gradcam_panel(cam: dict, *, frame_label: str | None = None) -> None:
                     if safe_heat.dtype in [np.float32, np.float64]:
                         safe_heat = (np.clip(safe_heat, 0, 1) * 255).astype(np.uint8)
                 st.image(safe_heat, channels="BGR", caption="Grad-CAM Overlay", use_container_width=True)
-            except Exception:
-                pass
+            except Exception as e:
+                st.warning(f"Grad-CAM overlay error: {e}")
 
 
 def _render_verdict_banner(authenticity_pct: float, warn_pct: float) -> None:
@@ -972,7 +972,7 @@ def render_media_analysis_tab(results: dict[str, Any]) -> None:
                             safe_media = (np.clip(safe_media, 0, 1) * 255).astype(np.uint8)
                     st.image(safe_media, caption="Analyzed Media", use_container_width=True)
                 except Exception as e:
-                    st.error("Media format could not be visually rendered.")
+                    st.error(f"Media format error: {e}")
         else:
             st.info("Visual preview is not available for this file type.")
             
@@ -1003,197 +1003,3 @@ def render_media_analysis_tab(results: dict[str, Any]) -> None:
 
 def render_spectrum_evidence_tab(results: dict[str, Any]) -> None:
     media_type = results["media_type"]
-    audio_y = results.get("audio_y")
-    audio_sr = results.get("audio_sr")
-
-    if audio_y is not None and audio_sr is not None:
-        st.markdown("##### Acoustic spectrum analysis")
-        st.caption(
-            "Mel-spectrogram from Librosa · "
-            + ("video soundtrack" if media_type == "video" else "audio waveform")
-        )
-        render_mel_spectrogram(audio_y, audio_sr)
-
-        if media_type == "audio":
-            features = (results.get("analysis_details") or {}).get("librosa_features", {})
-            if features:
-                c1, c2, c3 = st.columns(3)
-                c1.metric("MFCC variance", features.get("mfcc_variance", "—"))
-                c2.metric("Spectral flatness", features.get("spectral_flatness_mean", "—"))
-                c3.metric("Heuristic synthetic", features.get("heuristic_synthetic_score", "—"))
-                
-    elif media_type in {"image", "video"}:
-        st.markdown("##### Spatial frequency evidence")
-        forensic = get_last_forensic_details() or {}
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Moiré score", forensic.get("moire_score", "—"))
-        c2.metric("Spectral residual", forensic.get("spectral_residual_score", "—"))
-        c3.metric("Heuristic synthetic", forensic.get("heuristic_synthetic_score", "—"))
-        st.info("No acoustic data detected for this visual asset.")
-    else:
-        st.caption("No spectrum data for this asset type.")
-
-
-def render_right_forensic_panel(
-    results: dict[str, Any] | None,
-    metadata_report: MetadataReport | None,
-) -> list[str]:
-    """Right column: authenticity metric + detection factors (always visible)."""
-    st.markdown('<div class="forensic-rail">', unsafe_allow_html=True)
-    st.markdown("### ◈ Forensic Summary")
-
-    if results is None or metadata_report is None:
-        st.metric("Authenticity", "—")
-        st.caption("Upload media and run analysis to populate forensic metrics.")
-        st.markdown("**Detection factors**")
-        st.markdown("- Awaiting analysis.")
-        st.markdown("</div>", unsafe_allow_html=True)
-        return []
-
-    report_ctx: AnalysisContext | None = results.get("report_ctx")
-    factors = build_detection_factors(report_ctx) if report_ctx else []
-    results["detection_factors"] = factors
-    if results.get("analysis_details") is not None:
-        results["analysis_details"]["detection_factors"] = factors
-
-    authenticity_pct = float(results["authenticity_pct"])
-    evidence = report_ctx.evidence if report_ctx else None
-
-    if evidence is not None:
-        delta_label = (
-            f"{evidence.vouching_delta_pct:+.1f}%"
-            if evidence.vouching_delta_pct != 0
-            else None
-        )
-        st.metric(
-            "Authenticity",
-            f"{evidence.final_pct:.1f}%",
-            delta=delta_label,
-            help="Weighted Visual + Audio + Metadata score; Δ reflects metadata vouching.",
-        )
-        if evidence.vouching_delta_pct != 0:
-            direction = "increase" if evidence.vouching_delta_pct > 0 else "decrease"
-            st.caption(
-                f"Metadata vouching {direction}: "
-                f"{abs(evidence.vouching_delta_pct):.1f} pts "
-                f"({evidence.weighted_base_pct:.1f}% → {evidence.final_pct:.1f}%)"
-            )
-    else:
-        st.metric("Authenticity", f"{authenticity_pct:.1f}%")
-
-    warn_pct = float(results.get("warn_pct", 45.0))
-    if authenticity_pct < warn_pct:
-        st.markdown(
-            '<span class="label-suspicious">Suspicious</span>',
-            unsafe_allow_html=True,
-        )
-    else:
-        st.markdown(
-            '<span class="label-authentic">Authentic</span>',
-            unsafe_allow_html=True,
-        )
-
-    if report_ctx and report_ctx.metadata_vouching and report_ctx.metadata_vouching.get(
-        "trusted_hardware"
-    ):
-        v = report_ctx.metadata_vouching
-        st.success(
-            f"**Hardware verified:** {v.get('camera_make') or '—'} "
-            f"{v.get('camera_model') or ''}"
-        )
-
-    st.markdown("**Detection factors**")
-    if factors:
-        for item in factors:
-            st.markdown(f"- {item}")
-    else:
-        st.markdown("- No significant synthetic indicators flagged.")
-
-    st.markdown("</div>", unsafe_allow_html=True)
-    return factors
-
-
-def main() -> None:
-    inject_command_center_theme()
-    render_command_header()
-
-    with st.sidebar:
-        render_sidebar_logo()
-        st.markdown("---")
-        profile_key = render_sidebar_controls()
-
-    col_left, col_right = st.columns([2, 1])
-
-    with col_left:
-        st.markdown("##### ◈ Media Ingest")
-        uploaded = st.file_uploader(
-            "Upload media for forensic verification",
-            type=UPLOAD_TYPES,
-            help="Supported: .jpg, .jpeg, .png, .mp4, .wav, .mp3",
-        )
-        if uploaded is not None:
-            st.caption(f"**{uploaded.name}** · {uploaded.size / 1024:.1f} KB")
-
-        run_analysis = st.button(
-            "▶ RE-RUN FORENSIC ANALYSIS",
-            type="primary",
-            disabled=uploaded is None,
-            use_container_width=True,
-        )
-
-        if uploaded is None:
-            _clear_analysis_state()
-        elif should_run_analysis(uploaded, profile_key, force=run_analysis):
-            progress = st.progress(0.0, text="Initializing verification protocol…")
-            try:
-                execute_forensic_analysis(uploaded, profile_key, progress)
-                st.success("Analysis complete — results loaded into all panels.")
-            except ForensicsError as exc:
-                st.error(f"Analysis failed: {exc}")
-                _clear_analysis_state()
-            except Exception as exc:
-                st.error(f"Unexpected error: {exc}")
-                _clear_analysis_state()
-
-        results = st.session_state.get("analysis_results")
-        metadata_report = st.session_state.get("metadata_report")
-
-        tab_media, tab_spectrum, tab_metadata = st.tabs(
-            ["Media Analysis", "Spectrum Evidence", "Metadata Explorer"]
-        )
-
-        with tab_media:
-            if results is not None:
-                render_media_analysis_tab(results)
-            else:
-                st.info("Upload a file and run analysis to view media forensics.")
-
-        with tab_spectrum:
-            if results is not None:
-                render_spectrum_evidence_tab(results)
-            else:
-                st.caption("Spectrum evidence appears after analysis.")
-
-        with tab_metadata:
-            file_path = (
-                (results or {}).get("file_path")
-                or st.session_state.get("persisted_file_path")
-            )
-            if metadata_report is not None or file_path:
-                render_metadata_explorer(metadata_report, file_path=file_path)
-            elif uploaded is not None:
-                st.info("Extracting metadata… analysis should start automatically.")
-            else:
-                st.caption("Upload a file to explore hardware metadata tags.")
-
-    with col_right:
-        render_right_forensic_panel(
-            st.session_state.get("analysis_results"),
-            st.session_state.get("metadata_report"),
-        )
-
-    render_sticky_footer()
-
-
-if __name__ == "__main__":
-    main()
